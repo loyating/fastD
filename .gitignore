@@ -1,4 +1,6 @@
 /vendor
 /.idea
-/tests/app/*/runtime
+/app/runtime
 composer.lock
+seed
+src/ServiceProvider/encryption

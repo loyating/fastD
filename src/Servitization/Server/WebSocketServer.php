@@ -4,7 +4,7 @@
  * @copyright 2016
  *
  * @see      https://www.github.com/janhuang
- * @see      http://www.fast-d.cn/
+ * @see      https://fastdlabs.com
  */
 
 namespace FastD\Servitization\Server;
@@ -42,7 +42,11 @@ class WebSocketServer extends WebSocket
             }
         }
         $response = app()->handleRequest($request);
-        $server->push($frame->fd, (string) $response->getBody());
+        $fd = null !== ($fd = $response->getFileDescriptor()) ? $fd : $frame->fd;
+        if (false === $server->connection_info($fd)) {
+            return -1;
+        }
+        $server->push($fd, (string) $response->getBody());
         app()->shutdown($request, $response);
 
         return 0;

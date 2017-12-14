@@ -4,7 +4,7 @@
  * @copyright 2016
  *
  * @see      https://www.github.com/janhuang
- * @see      http://www.fast-d.cn/
+ * @see      https://fastdlabs.com
  */
 
 namespace FastD;
@@ -45,6 +45,8 @@ class Server
             config()->get('server.host'),
             config()->get('server.options', [])
         );
+
+        $application->add('server', $this->server);
 
         $this->initListeners();
         $this->initProcesses();
@@ -111,9 +113,7 @@ class Server
      */
     public function start()
     {
-        $server = $this->bootstrap();
-
-        app()->add('server', $server->getSwoole());
+        $this->bootstrap();
 
         return $this->server->start();
     }

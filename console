@@ -5,7 +5,7 @@
  * @copyright 2016
  *
  * @link      https://www.github.com/janhuang
- * @link      http://www.fast-d.cn/
+ * @link      https://fastdlabs.com
  */
 
 use FastD\Application;
@@ -36,6 +36,15 @@ if (!defined('COMPOSER_INSTALL')) {
 
 include COMPOSER_INSTALL;
 
-$console = new Console(new Application(getcwd()));
+/**
+ * This code
+ *
+ * __DIR__ . '/app'
+ *
+ * is test code.
+ */
+$path = file_exists('./app') ? './app' : getcwd();
+
+$console = new Console(new Application($path));
 
 $console->run();

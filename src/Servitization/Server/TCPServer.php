@@ -4,7 +4,7 @@
  * @copyright 2016
  *
  * @see      https://www.github.com/janhuang
- * @see      http://www.fast-d.cn/
+ * @see      https://fastdlabs.com
  */
 
 namespace FastD\Servitization\Server;
@@ -47,6 +47,12 @@ class TCPServer extends TCP
             }
         }
         $response = app()->handleRequest($request);
+        if (null !== $response->getFileDescriptor()) {
+            $fd = $response->getFileDescriptor();
+        }
+        if (false === $server->connection_info($fd)) {
+            return -1;
+        }
         $server->send($fd, (string) $response->getBody());
         app()->shutdown($request, $response);
 

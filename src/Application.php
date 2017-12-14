@@ -4,7 +4,7 @@
  * @copyright 2016
  *
  * @see      https://www.github.com/janhuang
- * @see      http://www.fast-d.cn/
+ * @see      https://fastdlabs.com
  */
 
 namespace FastD;
@@ -19,6 +19,7 @@ use FastD\Http\Response;
 use FastD\Http\ServerRequest;
 use FastD\Logger\Logger;
 use FastD\ServiceProvider\ConfigServiceProvider;
+use FastD\Servitization\Client\Client;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Symfony\Component\Debug\Exception\FatalThrowableError;
@@ -29,12 +30,7 @@ use Throwable;
  */
 class Application extends Container
 {
-    /**
-     * The FastD version.
-     *
-     * @const string
-     */
-    const VERSION = '3.1.0';
+    const VERSION = 'v3.2.0';
 
     /**
      * @var Application
@@ -96,22 +92,36 @@ class Application extends Container
         return $this->path;
     }
 
+    /**
+     * Application bootstrap.
+     */
     public function bootstrap()
     {
         if (!$this->booted) {
-            $this->registerExceptionHandler();
-
             $config = load($this->path.'/config/app.php');
 
             $this->name = $config['name'];
 
             $this->add('config', new Config($config));
-            $this->add('logger', new Logger(app()->getName()));
+            $this->add('logger', new Logger($this->name));
+            $this->add('client', new Client());
 
+            $this->registerExceptionHandler();
             $this->registerServicesProviders($config['services']);
             unset($config);
             $this->booted = true;
         }
+    }
+
+    protected function registerExceptionHandler()
+    {
+        error_reporting(-1);
+
+        set_exception_handler([$this, 'handleException']);
+
+        set_error_handler(function ($level, $message, $file = '', $line = 0) {
+            throw new ErrorException($message, 0, $level, $file, $line);
+        });
     }
 
     /**
@@ -125,21 +135,10 @@ class Application extends Container
         }
     }
 
-    protected function registerExceptionHandler()
-    {
-        error_reporting(-1);
-
-        set_exception_handler([$this, 'handleException']);
-
-        set_error_handler(function ($level, $message, $file = '', $line = 0, $context = []) {
-            throw new ErrorException($message, 0, $level, $file, $line);
-        });
-    }
-
     /**
      * @param ServerRequestInterface $request
      *
-     * @return Response
+     * @return Response|\Symfony\Component\HttpFoundation\Response
      */
     public function handleRequest(ServerRequestInterface $request)
     {
@@ -147,13 +146,15 @@ class Application extends Container
 
         try {
             $response = $this->get('dispatcher')->dispatch($request);
+            logger()->log(Logger::INFO, $response->getStatusCode(), [
+                'method' => $request->getMethod(),
+                'path' => $request->getUri()->getPath(),
+            ]);
         } catch (Exception $exception) {
-            $this->handleException($exception);
-            $response = $this->renderException($exception);
+            $response = $this->handleException($exception);
         } catch (Throwable $exception) {
             $exception = new FatalThrowableError($exception);
-            $this->handleException($exception);
-            $response = $this->renderException($exception);
+            $response = $this->handleException($exception);
         }
 
         $this->add('response', $response);
@@ -162,15 +163,17 @@ class Application extends Container
     }
 
     /**
-     * @param Response $response
+     * @param Response|\Symfony\Component\HttpFoundation\Response $response
      */
-    public function handleResponse(Response $response)
+    public function handleResponse($response)
     {
         $response->send();
     }
 
     /**
      * @param $e
+     *
+     * @return Response
      */
     public function handleException($e)
     {
@@ -187,29 +190,22 @@ class Application extends Container
             ];
         }
 
-        /*
-         * TODO 如果在是在 console, 并且在 bootstrap 中发生异常, 将只会保存日志而没有抛出任何异常
-         */
-        logger()->log(Logger::ERROR, $e->getMessage(), $trace);
-    }
+        $this->add('exception', $e);
 
-    /**
-     * @param Exception $e
-     *
-     * @return Response
-     */
-    public function renderException(Exception $e)
-    {
+        logger()->log(Logger::ERROR, $e->getMessage(), $trace);
+
         $statusCode = ($e instanceof HttpException) ? $e->getStatusCode() : $e->getCode();
 
         if (!array_key_exists($statusCode, Response::$statusTexts)) {
-            $statusCode = 502;
+            $statusCode = Response::HTTP_INTERNAL_SERVER_ERROR;
         }
 
         return json(call_user_func(config()->get('exception.response'), $e), $statusCode);
     }
 
     /**
+     * Started application.
+     *
      * @return int
      */
     public function run()
@@ -224,16 +220,18 @@ class Application extends Container
     }
 
     /**
-     * @param ServerRequestInterface $request
-     * @param ResponseInterface      $response
+     * @param ServerRequestInterface                                       $request
+     * @param ResponseInterface|\Symfony\Component\HttpFoundation\Response $response
      *
      * @return int
      */
-    public function shutdown(ServerRequestInterface $request, ResponseInterface $response)
+    public function shutdown(ServerRequestInterface $request, $response)
     {
         $this->offsetUnset('request');
         $this->offsetUnset('response');
-        $this->offsetUnset('exception');
+        if ($this->offsetExists('exception')) {
+            $this->offsetUnset('exception');
+        }
         unset($request, $response);
 
         return 0;
